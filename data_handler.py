@@ -20,13 +20,15 @@ class DataHandler:
         return self.books_data_index_book_id.loc[book_id]['title']
 
     def prepare_norm_user_rating_matrix(self, ratings_data: pd.DataFrame) -> Tuple[np.array, np.array, np.array]:
+
         ratings_data = ratings_data.reset_index().filter(items=['book_id', 'user_id', 'rating'])
-        user_rating = ratings_data.pivot_table(index=['user_id'], columns=['book_id'])
-        users_avg_rating = user_rating.mean(axis=1)
+        user_rating = ratings_data.pivot_table(index=['user_id'], columns=['book_id']) # users * books
+        self.id2xbookid = {i: real_i for i, real_i in (zip(range(ratings_data.shape[0]), list(user_rating['rating'])))}
+        users_avg_rating = user_rating.mean(axis=1).values.reshape(-1, 1)  # vectors for users
         rating_diff = user_rating['rating'] - users_avg_rating
         rating_diff = rating_diff.fillna(0)
         data_matrix = user_rating['rating']
-        return rating_diff.values, users_avg_rating.values, data_matrix.values
+        return rating_diff.values, users_avg_rating, data_matrix.values
 
     def prepare_rating_matrix(self, ratings_data: pd.DataFrame) -> pd.DataFrame:
         ratings_data = ratings_data.reset_index().filter(items=['book_id', 'user_id', 'rating'])
@@ -57,7 +59,6 @@ class DataHandler:
 
 if __name__ == '__main__':
     dh = DataHandler("data")
-    norm_rating, users_mean = dh.prepare_norm_user_rating_matrix(dh.ratings_data)
 
     a = 2
     print()

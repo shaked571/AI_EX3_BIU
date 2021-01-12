@@ -56,21 +56,20 @@ class RecommendationSystem:
         if sim not in ['jaccard', 'cosine', 'euclidean']:
             raise ValueError("We support only the following types: 'jaccard', 'cosine', 'euclidean'")
         ratings_diff, users_mean, self.data_matrix = self.dh.prepare_norm_user_rating_matrix(self.dh.ratings_data)
-        if sim != 'jaccard':
-            ratings_diff = csr_matrix(ratings_diff)
         user_similarity = 1 - pairwise_distances(ratings_diff, metric=sim)
-
+        user_similarity = np.array([self.keep_top_k(np.array(arr), 20) for arr in user_similarity])
         self.pred = users_mean + user_similarity.dot(ratings_diff) / np.array([np.abs(user_similarity).sum(axis=1)]).T
         return user_similarity
 
     def keep_top_k(self, arr, k):
         smallest = heapq.nlargest(k, arr)[-1]
-        arr[arr < smallest] = 0 # replace anything lower than the cut off with 0
+        arr[arr < smallest] = 0  # replace anything lower than the cut off with 0
         return arr
 
     def get_CF_recommendation(self, user_id, k):
         if self.pred is None:
             raise ValueError("Need first to build the CF matrix using 'build_CF_prediction_matrix()' ")
+        user_id = user_id - 1
         predicted_ratings_row = self.pred[user_id]
         data_matrix_row = self.data_matrix[user_id]
 
@@ -85,19 +84,18 @@ class RecommendationSystem:
     def get_top_rated(self, data_matrix_row, k):
         srt_idx = np.argsort(-data_matrix_row)
         srt_idx_not_nan = srt_idx[~np.isnan(data_matrix_row[srt_idx])]
-        top_k_title = [self.dh.id2title(idx) for idx in srt_idx_not_nan][:k]
+        top_k_title = [self.dh.id2title(self.dh.id2xbookid[idx]) for idx in srt_idx_not_nan][:k]
         return top_k_title
 
     # Function that takes in movie title as input and outputs most similar movies
     def get_recommendations(self, predicted_ratings_row, data_matrix_row, k):
 
         predicted_ratings_unrated = predicted_ratings_row[np.isnan(data_matrix_row)]
-        #print(predicted_ratings_unrated)
 
         book_ids = np.argsort(-predicted_ratings_unrated)[:k]
 
         # Return top k movies
-        return [self.dh.id2title(idx) for idx in book_ids]
+        return [self.dh.id2title(self.dh.id2xbookid[idx]) for idx in book_ids]
     #pred.round(2)
 
 
@@ -107,8 +105,7 @@ if __name__ == '__main__':
     # print(rc.get_simply_place_recommendation('Ohio', 10))
     # print(rc.get_simply_age_recommendation(28, 10))
     rc.build_CF_prediction_matrix('cosine')
-    rec_510 = rc.get_recommendations(510, 10)
-    rec_511 = rc.get_recommendations(511, 10)
+    rec_511 = rc.get_CF_recommendation(511, 10)
 
     # jac = rc.build_CF_prediction_matrix('jaccard')
     # euc = rc.build_CF_prediction_matrix( 'euclidean')
