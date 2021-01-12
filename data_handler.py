@@ -1,7 +1,8 @@
+from typing import Tuple
+
 import pandas as pd
 import os
 import numpy as np
-
 
 class DataHandler:
 
@@ -18,21 +19,14 @@ class DataHandler:
     def id2title(self, book_id) -> str:
         return self.books_data_index_book_id.loc[book_id]['title']
 
-    def prepare_norm_user_rating_matrix(self, ratings_data: pd.DataFrame) -> pd.DataFrame:
+    def prepare_norm_user_rating_matrix(self, ratings_data: pd.DataFrame) -> Tuple[np.array, np.array, np.array]:
         ratings_data = ratings_data.reset_index().filter(items=['book_id', 'user_id', 'rating'])
-        pivot_rd = ratings_data.pivot_table(index=['book_id'], columns=['user_id'])
-        v = pivot_rd.count(axis=1)
-        pivot_rd['vote_count'] = v
-        pivot_rd = pivot_rd[pivot_rd.vote_count >= self.min_count]
-
-        pivot_rd = pivot_rd.drop(columns=['vote_count'])
-        pivot_rd = pivot_rd.reset_index()
-        pivot_rg_rating = pivot_rd['rating']
-        pivot_rg_rating['book_id'] = pivot_rd.book_id
-        melt = pd.melt(pivot_rg_rating, id_vars=['book_id'], value_vars=list(range(1,5001)))
-        r = pivot_rd.mean(axis=1)
-        pivot_rd = pivot_rd - r
-        return pivot_rd
+        user_rating = ratings_data.pivot_table(index=['user_id'], columns=['book_id'])
+        users_avg_rating = user_rating.mean(axis=1)
+        rating_diff = user_rating['rating'] - users_avg_rating
+        rating_diff = rating_diff.fillna(0)
+        data_matrix = user_rating['rating']
+        return rating_diff.values, users_avg_rating.values, data_matrix.values
 
     def prepare_rating_matrix(self, ratings_data: pd.DataFrame) -> pd.DataFrame:
         ratings_data = ratings_data.reset_index().filter(items=['book_id', 'user_id', 'rating'])
@@ -63,7 +57,7 @@ class DataHandler:
 
 if __name__ == '__main__':
     dh = DataHandler("data")
-    norm_rating = dh.prepare_norm_user_rating_matrix(dh.ratings_data)
+    norm_rating, users_mean = dh.prepare_norm_user_rating_matrix(dh.ratings_data)
 
     a = 2
     print()
