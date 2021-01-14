@@ -4,6 +4,7 @@ import pandas as pd
 import os
 import numpy as np
 
+
 class DataHandler:
 
     def __init__(self, base_data_path):
@@ -20,7 +21,6 @@ class DataHandler:
         return self.books_data_index_book_id.loc[book_id]['title']
 
     def prepare_norm_user_rating_matrix(self, ratings_data: pd.DataFrame) -> Tuple[np.array, np.array, np.array]:
-
         ratings_data = ratings_data.reset_index().filter(items=['book_id', 'user_id', 'rating'])
         user_rating = ratings_data.pivot_table(index=['user_id'], columns=['book_id']) # users * books
         self.id2xbookid = {i: real_i for i, real_i in (zip(range(ratings_data.shape[0]), list(user_rating['rating'])))}
@@ -38,7 +38,6 @@ class DataHandler:
         pivot_rd['avg'] = r
         pivot_rd['vote_count'] = v
         return pivot_rd[pivot_rd.vote_count >= self.min_count]
-
 
     def get_rating_table_by_age(self, df, age):
         low_bound = (age // 10) * 10 + 1

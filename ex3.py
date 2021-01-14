@@ -7,6 +7,7 @@ from scipy.sparse import csr_matrix
 from data_handler import DataHandler
 from functools import lru_cache
 
+
 class RecommendationSystem:
 
     def __init__(self, base_data_path: str = 'data'):
@@ -42,7 +43,6 @@ class RecommendationSystem:
         user_ratings_matrix = self.dh.prepare_rating_matrix(user_rating)
         return self.enrich_rating_tables(k, user_ratings_matrix)
 
-
     def enrich_rating_tables(self, k, user_ratings_matrix) -> List[Tuple[str, int, float]]:
         user_ratings_matrix['w_avg'] = user_ratings_matrix.apply(self.weighted_average, axis=1)
         top_general_pick = user_ratings_matrix.sort_values(by='w_avg', ascending=False)['w_avg']
@@ -50,7 +50,6 @@ class RecommendationSystem:
         top_k_title = [self.dh.id2title(idx) for idx in top_k_ids]
         top_k_scores = list(top_general_pick[:k])
         return list(zip(top_k_title, top_k_ids, top_k_scores))
-
 
     def build_CF_prediction_matrix(self, sim):
         if sim not in ['jaccard', 'cosine', 'euclidean']:
@@ -96,7 +95,9 @@ class RecommendationSystem:
 
         # Return top k movies
         return [self.dh.id2title(self.dh.id2xbookid[idx]) for idx in book_ids]
-    #pred.round(2)
+
+    def build_contact_sim_matrix(self):
+        pass
 
 
 if __name__ == '__main__':
