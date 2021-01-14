@@ -1,5 +1,6 @@
 import heapq
-from typing import List, Tuple
+from collections import Counter
+from typing import List, Tuple, Dict
 import numpy as np
 from sklearn.metrics import pairwise_distances
 from scipy.sparse import csr_matrix
@@ -97,6 +98,40 @@ class RecommendationSystem:
         return [self.dh.id2title(self.dh.id2xbookid[idx]) for idx in book_ids]
 
     def build_contact_sim_matrix(self):
+        suffix_books_feature = self.build_tags_features() # numpy size(num_of_books, len(common_tags))
+        books_data = self.dh.books_data
+        prefix_books_feature = self.build_other_features() # numpy size(num_of_books, ???)
+        books_matrix = self.merge_faetures(suffix_books_feature, prefix_books_feature)
+        books_matrix = pairwise_distances # use the last section pairwise builder
+
+    def find_common_tags(self, books_tags) -> List[int]:
+        '''
+        Get a Dataframe of books and tags and return the tags that appear at list twice
+        :param books_data:
+        :return:
+        '''
+        count_tag = Counter(books_tags['tag_id'].to_list())
+        common_tags = {x: count for x, count in count_tag.items() if count > 1}
+        return list(common_tags.keys())
+
+    def build_tags_features(self):
+        books_tags = self.dh.books_tags
+        common_tags = self.find_common_tags(books_tags)
+        tag2feature = {tag: i for i, tag in enumerate(common_tags)}
+        vectors = []
+        for book_id, tags in books_tags.groupby(by='goodreads_book_id'):
+            vec = np.zeros(len(common_tags))
+            for t in tags.iterrows():
+                t_id = t[1].tag_id
+                if t_id in tag2feature:
+                    vec[tag2feature[t_id]] = 1
+            vectors.append(vec)
+        return np.array(vectors)
+
+    def build_other_features(self):
+        pass
+
+    def merge_faetures(self, suffix_books_feature, prefix_books_feature):
         pass
 
 
@@ -105,9 +140,9 @@ if __name__ == '__main__':
     # print(rc.get_simply_recommendation(10))
     # print(rc.get_simply_place_recommendation('Ohio', 10))
     # print(rc.get_simply_age_recommendation(28, 10))
-    rc.build_CF_prediction_matrix('cosine')
-    rec_511 = rc.get_CF_recommendation(511, 10)
-
+    # rc.build_CF_prediction_matrix('cosine')
+    # rec_511 = rc.get_CF_recommendation(511, 10)
+    rc.build_contact_sim_matrix()
     # jac = rc.build_CF_prediction_matrix('jaccard')
     # euc = rc.build_CF_prediction_matrix( 'euclidean')
     # res = rc.user_ratings_matrix['w_avg'].iloc[500]

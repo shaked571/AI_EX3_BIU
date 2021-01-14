@@ -10,6 +10,7 @@ class DataHandler:
     def __init__(self, base_data_path):
         self.min_count = 7  # calculated by taking the top 0.9 percentage of te counting
         self.books_data: pd.DataFrame = pd.read_csv(os.path.join(base_data_path, "books.csv"), encoding='ISO-8859-1')
+        self.books_tags: pd.DataFrame = pd.read_csv(os.path.join(base_data_path, "books_tags.csv"), encoding='ISO-8859-1')
         self.books_data_index_book_id = self.books_data.set_index(keys=['book_id'], drop=True)
         self.users_data = pd.read_csv(os.path.join(base_data_path, "users.csv"))
         self.ratings_data = pd.read_csv(os.path.join(base_data_path, "ratings.csv"), encoding='ISO-8859-1')
