@@ -4,7 +4,7 @@ from typing import List, Tuple, Dict
 import numpy as np
 from sklearn.metrics import pairwise_distances
 from scipy.sparse import csr_matrix
-
+from math import sqrt
 from data_handler import DataHandler
 from functools import lru_cache
 
@@ -73,12 +73,12 @@ class RecommendationSystem:
         predicted_ratings_row = self.pred[user_id]
         data_matrix_row = self.data_matrix[user_id]
 
-        print("Top rated books by test user:")
-        print(self.get_top_rated(data_matrix_row, k))
+        # print("Top rated books by test user:")
+        # print(self.get_top_rated(data_matrix_row, k))
 
-        print('****** test user - user_prediction ******')
+        # print('****** test user - user_prediction ******')
         recommendations = self.get_recommendations(predicted_ratings_row, data_matrix_row, k)
-        print(recommendations)
+        # print(recommendations)
         return recommendations
 
     def get_top_rated(self, data_matrix_row, k):
@@ -93,9 +93,21 @@ class RecommendationSystem:
         predicted_ratings_unrated = predicted_ratings_row[np.isnan(data_matrix_row)]
 
         book_ids = np.argsort(-predicted_ratings_unrated)[:k]
+        books_rating = np.sort(predicted_ratings_unrated)[::-1][:k]
 
         # Return top k movies
-        return [self.dh.id2title(self.dh.id2xbookid[idx]) for idx in book_ids]
+        return [(self.dh.id2title(self.dh.id2xbookid[idx]), self.dh.id2xbookid[idx], rating) for idx, rating in zip(book_ids, books_rating)]
+
+    def get_sorted_recommendations_from_cf(self, user_id):
+        user_id = user_id - 1
+        predicted_ratings_row = self.pred[user_id]
+        data_matrix_row = self.data_matrix[user_id]
+        predicted_ratings_unrated = predicted_ratings_row[np.isnan(data_matrix_row)]
+
+        book_ids = np.argsort(-predicted_ratings_unrated)
+        books_rating = np.sort(predicted_ratings_unrated)[::-1]
+
+        return {idx: rating for idx, rating in zip(book_ids, books_rating)}
 
     def build_contact_sim_matrix(self):
         suffix_books_feature = self.build_tags_features() # numpy size(num_of_books, len(common_tags))
@@ -134,6 +146,66 @@ class RecommendationSystem:
     def merge_faetures(self, suffix_books_feature, prefix_books_feature):
         pass
 
+    @staticmethod
+    def high_rating(rating):
+        if rating > 3:
+            return True
+        return False
+
+    def filter_test(self, k):
+        relevant_users = {}
+        test = self.dh.test
+        test["is_high"] = test["rating"].apply(self.high_rating)
+        for user_id, group_df in test.groupby(by="user_id"):
+            if len(group_df[group_df['is_high']]) >= k:
+                relevant_books = list(group_df[group_df['is_high']]["book_id"])
+                relevant_users[user_id] = relevant_books
+        return relevant_users
+
+    def precision_k(self, k):
+        print("precision_k")
+        relevant_users = self.filter_test(k)
+        for sim in ["cosine", "euclidean", "jaccard"]:
+            self.build_CF_prediction_matrix(sim)
+            hits = 0
+            for user_id, high_rated_books in relevant_users.items():
+                recommendations = self.get_CF_recommendation(user_id, k)
+                for (_, book_id, _) in recommendations:
+                    if book_id in high_rated_books:
+                        hits += 1
+            precision = round(hits/(k*len(relevant_users)), 3)
+            print(f"Accuracy with similarity {sim} is {precision}")
+
+    def ARHR(self, k):
+        print("ARHR")
+        relevant_users = self.filter_test(k)
+        for sim in ["cosine", "euclidean", "jaccard"]:
+            self.build_CF_prediction_matrix(sim)
+            hits = 0
+            for user_id, high_rated_books in relevant_users.items():
+                recommendations = self.get_CF_recommendation(user_id, k)
+                for i, (_, book_id, _) in enumerate(recommendations):
+                    if book_id in high_rated_books:
+                        hits += 1/(i+1)
+            arhr = round(hits / len(relevant_users), 3)
+            print(f"Accuracy with similarity {sim} is {arhr}")
+
+    def RMSE(self):
+        print("RMSE")
+        for sim in ["cosine", "euclidean", "jaccard"]:
+            self.build_CF_prediction_matrix(sim)
+            sum_error = 0
+            count_lines = 0
+            for user_id, group_df in self.dh.test.groupby(by="user_id"):
+                predicted_recs = self.get_sorted_recommendations_from_cf(user_id)
+                for row in group_df.itertuples(index=False):
+                    _, book_id, rating = tuple(row)
+                    predicted_rating = predicted_recs[book_id] if book_id in predicted_recs else 0
+                    sum_error += (predicted_rating - rating)**2
+                    count_lines += 1
+            rmse = round(sqrt(sum_error/count_lines), 3)
+            print(f"Accuracy with similarity {sim} is {rmse}")
+
 
 if __name__ == '__main__':
     rc = RecommendationSystem()
@@ -141,8 +213,11 @@ if __name__ == '__main__':
     # print(rc.get_simply_place_recommendation('Ohio', 10))
     # print(rc.get_simply_age_recommendation(28, 10))
     # rc.build_CF_prediction_matrix('cosine')
-    # rec_511 = rc.get_CF_recommendation(511, 10)
-    rc.build_contact_sim_matrix()
+    # rec = rc.get_CF_recommendation(511, 10)
+    # print(rec)
+    # rc.build_contact_sim_matrix()
+    rc.RMSE()
+    # rc.ARHR(10)
     # jac = rc.build_CF_prediction_matrix('jaccard')
     # euc = rc.build_CF_prediction_matrix( 'euclidean')
     # res = rc.user_ratings_matrix['w_avg'].iloc[500]

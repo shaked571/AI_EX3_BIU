@@ -14,6 +14,7 @@ class DataHandler:
         self.books_data_index_book_id = self.books_data.set_index(keys=['book_id'], drop=True)
         self.users_data = pd.read_csv(os.path.join(base_data_path, "users.csv"))
         self.ratings_data = pd.read_csv(os.path.join(base_data_path, "ratings.csv"), encoding='ISO-8859-1')
+        self.test = pd.read_csv(os.path.join(base_data_path, "test.csv"))
         self.user_rating = self.merge_users_and_ratings(self.users_data, self.ratings_data)
         self.general_ratings_matrix: pd.DataFrame = self.prepare_rating_matrix(self.ratings_data)
         self.C_total_mean = self.general_ratings_matrix['avg'].mean()
