@@ -295,18 +295,8 @@ class RecommendationSystem:
             rmse = round(sqrt(sum_error/count_lines), 3)
             print(f"Accuracy with similarity {sim} is {rmse}")
 
-rc = RecommendationSystem()
-get_simply_recommendation = rc.get_simply_recommendation
-get_simply_place_recommendation = rc.get_simply_place_recommendation
-get_simply_age_recommendation = rc.get_simply_age_recommendation
-build_CF_prediction_matrix = rc.build_CF_prediction_matrix
-get_contact_recommendation = rc.get_contact_recommendation
-get_CF_recommendation = rc.get_CF_recommendation
-build_contact_sim_matrix = rc.build_contact_sim_matrix
-precision_k = rc.precision_k
-ARHR = rc.ARHR
-RMSE = rc.RMSE
-if __name__ == '__main__':
+
+def full_run():
     print(get_simply_recommendation(10))
     print(get_simply_place_recommendation('Ohio', 10))
     print(get_simply_age_recommendation(28, 10))
@@ -320,3 +310,15 @@ if __name__ == '__main__':
     ARHR(10)
     RMSE()
 
+
+rc = RecommendationSystem()
+get_simply_recommendation = rc.get_simply_recommendation
+get_simply_place_recommendation = rc.get_simply_place_recommendation
+get_simply_age_recommendation = rc.get_simply_age_recommendation
+build_CF_prediction_matrix = rc.build_CF_prediction_matrix
+get_contact_recommendation = rc.get_contact_recommendation
+get_CF_recommendation = rc.get_CF_recommendation
+build_contact_sim_matrix = rc.build_contact_sim_matrix
+precision_k = rc.precision_k
+ARHR = rc.ARHR
+RMSE = rc.RMSE
