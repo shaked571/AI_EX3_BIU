@@ -11,7 +11,8 @@ class DataHandler:
         self.min_count = 7  # calculated by taking the top 0.9 percentage of te counting
         self.books_data: pd.DataFrame = pd.read_csv(os.path.join(base_data_path, "books.csv"), encoding='ISO-8859-1')
         self.books_tags: pd.DataFrame = pd.read_csv(os.path.join(base_data_path, "books_tags.csv"), encoding='ISO-8859-1')
-        self.books_data_index_book_id = self.books_data.set_index(keys=['book_id'], drop=True)
+        self.books_data_index_book_id = self.books_data.reset_index().set_index(keys=['book_id'])
+        self.books_data_index_title = self.books_data.set_index(keys=['title'], drop=True)
         self.users_data = pd.read_csv(os.path.join(base_data_path, "users.csv"))
         self.ratings_data = pd.read_csv(os.path.join(base_data_path, "ratings.csv"), encoding='ISO-8859-1')
         self.user_rating = self.merge_users_and_ratings(self.users_data, self.ratings_data)
@@ -20,6 +21,15 @@ class DataHandler:
 
     def id2title(self, book_id) -> str:
         return self.books_data_index_book_id.loc[book_id]['title']
+
+    def title2id(self, title:str) -> int:
+        return self.books_data_index_title.loc[title]['book_id']
+
+    def book_id2matrix_id(self, book_id):
+        return self.books_data_index_book_id.loc[book_id]['index']
+
+    def matrix_id2book_id(self, mat_id):
+        return self.books_data.loc[mat_id]['book_id']
 
     def prepare_norm_user_rating_matrix(self, ratings_data: pd.DataFrame) -> Tuple[np.array, np.array, np.array]:
         ratings_data = ratings_data.reset_index().filter(items=['book_id', 'user_id', 'rating'])
@@ -55,6 +65,7 @@ class DataHandler:
         ratings['location'] = np.nan
         ratings.update(users)
         return ratings
+
 
 
 if __name__ == '__main__':

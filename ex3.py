@@ -36,7 +36,7 @@ class RecommendationSystem:
         user_ratings_matrix = self.dh.prepare_rating_matrix(user_rating)
         return self.enrich_rating_tables(k, user_ratings_matrix)
 
-    def get_simply_place_recommendation(self,loc: str, k: int) -> List[Tuple[str, int, float]]:
+    def get_simply_place_recommendation(self, loc: str, k: int) -> List[Tuple[str, int, float]]:
         if k < 1:
             raise ValueError("k need to be a positive integer larger than 0")
         user_rating = self.dh.user_rating
@@ -98,41 +98,93 @@ class RecommendationSystem:
         return [self.dh.id2title(self.dh.id2xbookid[idx]) for idx in book_ids]
 
     def build_contact_sim_matrix(self):
-        suffix_books_feature = self.build_tags_features() # numpy size(num_of_books, len(common_tags))
-        books_data = self.dh.books_data
-        prefix_books_feature = self.build_other_features() # numpy size(num_of_books, ???)
-        books_matrix = self.merge_faetures(suffix_books_feature, prefix_books_feature)
-        books_matrix = pairwise_distances # use the last section pairwise builder
+        prefix_books_feature = self.build_other_features()
+        suffix_books_feature = self.build_tags_features()
+        books_matrix = self.merge_features(prefix_books_feature, suffix_books_feature)
+        self.pw_book_mat = 1 - pairwise_distances(books_matrix, metric='cosine')
+        return self.pw_book_mat
+
+    def get_contact_recommendation(self, book_name, k):
+        mat_id = self.dh.book_id2matrix_id(self.dh.title2id(book_name))
+        book_row = self.pw_book_mat[mat_id]
+        best_books = np.argsort(book_row)[::-1][1:k+1]
+        return [self.dh.id2title(self.dh.matrix_id2book_id(mat_id)) for mat_id in best_books]
 
     def find_common_tags(self, books_tags) -> List[int]:
-        '''
+        """
         Get a Dataframe of books and tags and return the tags that appear at list twice
         :param books_data:
         :return:
-        '''
+        """
         count_tag = Counter(books_tags['tag_id'].to_list())
-        common_tags = {x: count for x, count in count_tag.items() if count > 1}
+        common_tags = {x: count for x, count in count_tag.items() if count > 2}
         return list(common_tags.keys())
 
     def build_tags_features(self):
         books_tags = self.dh.books_tags
         common_tags = self.find_common_tags(books_tags)
         tag2feature = {tag: i for i, tag in enumerate(common_tags)}
-        vectors = []
+
+        vectors = {}
         for book_id, tags in books_tags.groupby(by='goodreads_book_id'):
             vec = np.zeros(len(common_tags))
             for t in tags.iterrows():
                 t_id = t[1].tag_id
                 if t_id in tag2feature:
                     vec[tag2feature[t_id]] = 1
-            vectors.append(vec)
-        return np.array(vectors)
+            vectors[book_id] = vec
+        return vectors
+
+    @staticmethod
+    def group_years(y):
+        if y > 1850:
+            return y // 10
+        elif 1000 <= y <= 1850:
+            return 100
+        elif 0 < y < 1000:
+            return 10
+        elif y <= 0:
+            return 0
+        else:
+            ValueError(f"Not expected input {y}")
+
+    @staticmethod
+    def group_lang(lang):
+        if lang in {'en', 'eng'}:
+            return 'en-US'
+        return lang
 
     def build_other_features(self):
-        pass
+        books = self.dh.books_data
+        #  If you would like to add an author is here
+        books = books.filter(items=['book_id', 'original_publication_year', 'language_code', 'authors'])
+        books['original_publication_year'] = books['original_publication_year'].fillna(value=-1).apply(self.group_years)
+        books['language_code'] = books['language_code'].fillna(value='en-US').apply(self.group_lang)
+        all_opt = np.concatenate([books.language_code.unique(), books.original_publication_year.unique(), books.authors.unique()], axis=0)
+        opt_num = len(all_opt)
+        tag2feature = {tag: i for i, tag in enumerate(all_opt)}
+        extra_auther = {tag: i + len(tag2feature) for i, tag in enumerate(books.authors.unique())} #give extra value for the auther
+        vectors = {}
+        for i, r in books.iterrows():
+            vec = np.zeros(opt_num + len(extra_auther))
+            vec[tag2feature[r.language_code]] = 1
+            vec[tag2feature[r.original_publication_year]] = 1
+            vec[tag2feature[r.authors]] = 1
+            vec[extra_auther[r.authors]] = 1
 
-    def merge_faetures(self, suffix_books_feature, prefix_books_feature):
-        pass
+            vectors[r.book_id] = vec
+        return vectors
+
+    def merge_features(self, prefix_books_feature, suffix_books_feature):
+        vecs = []
+        suffix_feature_num = len(list(suffix_books_feature.values())[0])
+        for book_id, vec_prefix in prefix_books_feature.items():  # we know that the prefix have all the books ids
+            if book_id in suffix_books_feature:
+                vec = np.concatenate([vec_prefix, suffix_books_feature[book_id]], axis=0)
+            else:
+                vec = np.concatenate([vec_prefix, np.zeros(suffix_feature_num)], axis=0)
+            vecs.append(vec)
+        return np.array(vecs)
 
 
 if __name__ == '__main__':
@@ -143,6 +195,8 @@ if __name__ == '__main__':
     # rc.build_CF_prediction_matrix('cosine')
     # rec_511 = rc.get_CF_recommendation(511, 10)
     rc.build_contact_sim_matrix()
+    res = rc.get_contact_recommendation('Twilight (Twilight, #1)', 25)
+    print(res)
     # jac = rc.build_CF_prediction_matrix('jaccard')
     # euc = rc.build_CF_prediction_matrix( 'euclidean')
     # res = rc.user_ratings_matrix['w_avg'].iloc[500]
