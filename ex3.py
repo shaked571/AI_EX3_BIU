@@ -1,30 +1,35 @@
 import heapq
 from collections import Counter
-from typing import List, Tuple
+from typing import List
 import numpy as np
+import pandas as pd
 from sklearn.metrics import pairwise_distances
 from math import sqrt
 from data_handler import DataHandler
+pd.set_option("display.max_rows", None, "display.max_columns", None)
+pd.options.display.max_colwidth = 100
 
 
 class RecommendationSystem:
 
     def __init__(self, base_data_path: str = 'data'):
         self.dh = DataHandler(base_data_path)
-        # self.CF = None
-        # self.users_mean = None
-        # self.ratings_diff = None
         self.data_matrix = None
 
     def weighted_average(self, row):
+        """
+        calculate the weighted average of a user
+        :param row: a user representation
+        :return:
+        """
         return ((row['vote_count'] / (row['vote_count'] + self.dh.min_count)) * row['avg']) + (
                 (self.dh.min_count / (self.dh.min_count + row['vote_count'])) * self.dh.C_total_mean)
 
-    def get_simply_recommendation(self, k: int) -> List[Tuple[str, int, float]]:
+    def get_simply_recommendation(self, k: int) -> pd.DataFrame:
         if k < 1:
             raise ValueError("k need to be a positive integer larger than 0")
         user_ratings_matrix = self.dh.general_ratings_matrix
-        return self.enrich_rating_tables(k, user_ratings_matrix)
+        return self.get_top_k_from_table(k, user_ratings_matrix)
 
     def get_simply_age_recommendation(self, age, k):
         if k < 1:
@@ -32,23 +37,34 @@ class RecommendationSystem:
         user_rating = self.dh.user_rating
         user_rating = self.dh.get_rating_table_by_age(user_rating, age)
         user_ratings_matrix = self.dh.prepare_rating_matrix(user_rating)
-        return self.enrich_rating_tables(k, user_ratings_matrix)
+        return self.get_top_k_from_table(k, user_ratings_matrix)
 
-    def get_simply_place_recommendation(self, loc: str, k: int) -> List[Tuple[str, int, float]]:
+    def get_simply_place_recommendation(self, loc: str, k: int) -> pd.DataFrame:
         if k < 1:
             raise ValueError("k need to be a positive integer larger than 0")
         user_rating = self.dh.user_rating
         user_rating = self.dh.get_rating_table_by_location(user_rating, loc)
         user_ratings_matrix = self.dh.prepare_rating_matrix(user_rating)
-        return self.enrich_rating_tables(k, user_ratings_matrix)
+        return self.get_top_k_from_table(k, user_ratings_matrix)
 
-    def enrich_rating_tables(self, k, user_ratings_matrix) -> List[Tuple[str, int, float]]:
+    def get_top_k_from_table(self, k, user_ratings_matrix) -> pd.DataFrame:
+        """
+        get the top k books recommendation for a yser rating matrix
+        :param k: top books
+        :param user_ratings_matrix: the user rating matrix
+        :return: a pandas with the title id and score
+        """
         user_ratings_matrix['w_avg'] = user_ratings_matrix.apply(self.weighted_average, axis=1)
         top_general_pick = user_ratings_matrix.sort_values(by='w_avg', ascending=False)['w_avg']
-        top_k_ids = list(top_general_pick[:k].index.get_level_values(0))
+        top_k_ids = list(top_general_pick[:k].index.get_level_values(0)) #the pandas as multi index and the first oen iis the id
         top_k_title = [self.dh.id2title(idx) for idx in top_k_ids]
         top_k_scores = list(top_general_pick[:k])
-        return list(zip(top_k_title, top_k_ids, top_k_scores))
+        res = list(zip(top_k_title, top_k_ids, top_k_scores))
+        plot = []
+        for r in res:
+            plot.append({"title": r[0], "id": r[1], "score": r[2]})
+
+        return pd.DataFrame(plot)
 
     def build_CF_prediction_matrix(self, sim):
         if sim not in ['jaccard', 'cosine', 'euclidean']:
@@ -64,19 +80,20 @@ class RecommendationSystem:
         arr[arr < smallest] = 0  # replace anything lower than the cut off with 0
         return arr
 
-    def get_CF_recommendation(self, user_id, k):
+    def get_CF_recommendation(self, user_id, k, DEBUG=False):
         if self.pred is None:
             raise ValueError("Need first to build the CF matrix using 'build_CF_prediction_matrix()' ")
         user_id = user_id - 1
         predicted_ratings_row = self.pred[user_id]
         data_matrix_row = self.data_matrix[user_id]
+        if DEBUG:
+            print("Top rated books by test user:")
+            print(self.get_top_rated(data_matrix_row, k))
 
-        # print("Top rated books by test user:")
-        # print(self.get_top_rated(data_matrix_row, k))
-
-        # print('****** test user - user_prediction ******')
         recommendations = self.get_recommendations(predicted_ratings_row, data_matrix_row, k)
-        # print(recommendations)
+        if DEBUG:
+            print('****** test user - user_prediction ******')
+            print(recommendations)
         return recommendations
 
     def get_top_rated(self, data_matrix_row, k):
@@ -147,6 +164,11 @@ class RecommendationSystem:
 
     @staticmethod
     def group_years(y):
+        """
+        Create the features for the publish year of the books. by decades from 1850 and before by millenniums.
+        :param y:
+        :return:
+        """
         if y > 1850:
             return y // 10
         elif 1000 <= y <= 1850:
@@ -160,11 +182,21 @@ class RecommendationSystem:
 
     @staticmethod
     def group_lang(lang):
+        """
+        group the english lang together to reduce sparsity
+        :param lang:
+        :return:
+        """
         if lang in {'en', 'eng'}:
             return 'en-US'
         return lang
 
     def build_other_features(self):
+        """
+        Build the feature from the books data file. build the features for the author, publish year and lang as one hot
+        vector for all with extra weight for the author
+        :return:
+        """
         books = self.dh.books_data
         #  If you would like to add an author is here
         books = books.filter(items=['book_id', 'original_publication_year', 'language_code', 'authors'])
@@ -186,6 +218,9 @@ class RecommendationSystem:
         return vectors
 
     def merge_features(self, prefix_books_feature, suffix_books_feature):
+        """
+        merge the 2 feature vectors created in to 1
+        """
         vecs = []
         suffix_feature_num = len(list(suffix_books_feature.values())[0])
         for book_id, vec_prefix in prefix_books_feature.items():  # we know that the prefix have all the books ids
@@ -203,6 +238,9 @@ class RecommendationSystem:
         return False
 
     def filter_test(self, k):
+        """
+        filter the test set only for users that rated movies as score of at list 4 at list k times
+        """
         relevant_users = {}
         test = self.dh.test
         test["is_high"] = test["rating"].apply(self.high_rating)
@@ -219,6 +257,7 @@ class RecommendationSystem:
             self.build_CF_prediction_matrix(sim)
             hits = 0
             for user_id, high_rated_books in relevant_users.items():
+                high_rated_books = set(high_rated_books)
                 recommendations = self.get_CF_recommendation(user_id, k)
                 for (_, book_id, _) in recommendations:
                     if book_id in high_rated_books:
@@ -259,25 +298,17 @@ class RecommendationSystem:
 
 if __name__ == '__main__':
     rc = RecommendationSystem()
-    # print(rc.get_simply_recommendation(10))
-    # print(rc.get_simply_place_recommendation('Ohio', 10))
-    # print(rc.get_simply_age_recommendation(28, 10))
-    # rc.build_CF_prediction_matrix('cosine')
-    # rec_511 = rc.get_CF_recommendation(511, 10)
+    print(rc.get_simply_recommendation(10))
+    print(rc.get_simply_place_recommendation('Ohio', 10))
+    print(rc.get_simply_age_recommendation(28, 10))
+    rc.build_CF_prediction_matrix('cosine')
+    rec_511 = rc.get_CF_recommendation(511, 10)
     rc.build_contact_sim_matrix()
     res = rc.get_contact_recommendation('Twilight (Twilight, #1)', 25)
     print(res)
-    # rec = rc.get_CF_recommendation(511, 10)
-    # print(rec)
-    # rc.build_contact_sim_matrix()
-    rc.RMSE()
-    # rc.ARHR(10)
-    # jac = rc.build_CF_prediction_matrix('jaccard')
-    # euc = rc.build_CF_prediction_matrix( 'euclidean')
-    # res = rc.user_ratings_matrix['w_avg'].iloc[500]
-    #
-    # r = rc.user_ratings_matrix['avg'].iloc[500]
-    # v = rc.user_ratings_matrix['vote_count'].iloc[500]
-    # C = rc.dh.C_total_mean
-    # m = rc.dh.min_count
+    rec = rc.get_CF_recommendation(511, 10)
+    print(rec)
+    rc.build_contact_sim_matrix()
+    rc.precision_k(10)
+    rc.ARHR(10)
 
